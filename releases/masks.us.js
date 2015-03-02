@@ -246,21 +246,12 @@ angular.module('ui.utils.masks.helpers', [])
 	};
 }]);
 
-angular.module('ui.utils.masks', [
-	'ui.utils.masks.global',
-	'ui.utils.masks.us'
-]);
-
 angular.module('ui.utils.masks.global', [
 	'ui.utils.masks.helpers',
 	'ui.utils.masks.global.money',
 	'ui.utils.masks.global.number',
-	'ui.utils.masks.global.percentage'
-]);
-
-angular.module('ui.utils.masks.us', [
-	'ui.utils.masks.helpers',
-	'ui.utils.masks.us.phone'
+	'ui.utils.masks.global.percentage',
+	'ui.utils.masks.global.scientific-notation'
 ]);
 
 angular.module('ui.utils.masks.global.money', [])
@@ -327,6 +318,115 @@ angular.module('ui.utils.masks.global.money', [])
 						decimalsPattern = decimals > 0 ? decimalDelimiter + new Array(decimals + 1).join('0') : '';
 						maskPattern = currencySym+' #'+thousandsDelimiter+'##0'+decimalsPattern;
 						moneyMask = new StringMask(maskPattern, {reverse: true});
+
+						parse(ctrl.$viewValue || '');
+					});
+				}
+
+				if(attrs.min){
+					ctrl.$parsers.push(function(value) {
+						var min = $parse(attrs.min)(scope);
+						return NumberValidators.minNumber(ctrl, value, min);
+					});
+
+					scope.$watch(attrs.min, function(value) {
+						NumberValidators.minNumber(ctrl, ctrl.$modelValue, value);
+					});
+				}
+
+				if(attrs.max) {
+					ctrl.$parsers.push(function(value) {
+						var max = $parse(attrs.max)(scope);
+						return NumberValidators.maxNumber(ctrl, value, max);
+					});
+
+					scope.$watch(attrs.max, function(value) {
+						NumberValidators.maxNumber(ctrl, ctrl.$modelValue, value);
+					});
+				}
+			}
+		};
+	}
+]);
+
+angular.module('ui.utils.masks.global.number', [])
+.directive('uiNumberMask',
+	['$locale', '$parse', 'PreFormatters', 'NumberMasks', 'NumberValidators',
+	function ($locale, $parse, PreFormatters, NumberMasks, NumberValidators) {
+		return {
+			restrict: 'A',
+			require: '?ngModel',
+			link: function (scope, element, attrs, ctrl) {
+				var decimalDelimiter = $locale.NUMBER_FORMATS.DECIMAL_SEP,
+					thousandsDelimiter = $locale.NUMBER_FORMATS.GROUP_SEP,
+					decimals = $parse(attrs.uiNumberMask)(scope);
+
+				if (!ctrl) {
+					return;
+				}
+
+				if (angular.isDefined(attrs.uiHideGroupSep)){
+					thousandsDelimiter = '';
+				}
+
+				if(isNaN(decimals)) {
+					decimals = 2;
+				}
+				var viewMask = NumberMasks.viewMask(decimals, decimalDelimiter, thousandsDelimiter),
+					modelMask = NumberMasks.modelMask(decimals);
+
+				function parse(value) {
+					if(!value) {
+						return value;
+					}
+
+					var valueToFormat = PreFormatters.clearDelimitersAndLeadingZeros(value) || '0';
+					var formatedValue = viewMask.apply(valueToFormat);
+					var actualNumber = parseFloat(modelMask.apply(valueToFormat));
+
+					if(angular.isDefined(attrs.uiNegativeNumber)){
+						var isNegative = (value[0] === '-'),
+							needsToInvertSign = (value.slice(-1) === '-');
+
+						//only apply the minus sign if it is negative or(exclusive)
+						//needs to be negative and the number is different from zero
+						if(needsToInvertSign ^ isNegative && !!actualNumber) {
+							actualNumber *= -1;
+							formatedValue = '-' + formatedValue;
+						}
+					}
+
+					if (ctrl.$viewValue !== formatedValue) {
+						ctrl.$setViewValue(formatedValue);
+						ctrl.$render();
+					}
+
+					return actualNumber;
+				}
+
+				ctrl.$formatters.push(function(value) {
+					var prefix = '';
+					if(angular.isDefined(attrs.uiNegativeNumber) && value < 0){
+						prefix = '-';
+					}
+
+					if(!value) {
+						return value;
+					}
+
+					var valueToFormat = PreFormatters.prepareNumberToFormatter(value, decimals);
+					return prefix + viewMask.apply(valueToFormat);
+				});
+
+				ctrl.$parsers.push(parse);
+
+				if (attrs.uiNumberMask) {
+					scope.$watch(attrs.uiNumberMask, function(decimals) {
+						if(isNaN(decimals)) {
+							decimals = 2;
+						}
+						viewMask = NumberMasks.viewMask(decimals, decimalDelimiter, thousandsDelimiter);
+						modelMask = NumberMasks.modelMask(decimals);
 
 						parse(ctrl.$viewValue || '');
 					});
@@ -459,128 +559,159 @@ angular.module('ui.utils.masks.global.percentage', [])
 	}
 ]);
 
-angular.module('ui.utils.masks.global.number', [])
-.directive('uiNumberMask',
-	['$locale', '$parse', 'PreFormatters', 'NumberMasks', 'NumberValidators',
-	function ($locale, $parse, PreFormatters, NumberMasks, NumberValidators) {
+angular.module('ui.utils.masks.global.scientific-notation', [])
+.directive('uiScientificNotationMask', ['$locale', '$parse', '$log',
+	function($locale, $parse, $log) {
+		var decimalDelimiter = $locale.NUMBER_FORMATS.DECIMAL_SEP,
+			defaultPrecision = 2;
+
+		function significandMaskBuilder (decimals) {
+			var mask = '0';
+
+			if(decimals > 0) {
+				mask += decimalDelimiter;
+				for (var i = 0; i < decimals; i++) {
+					mask += '0';
+				}
+			}
+
+			return new StringMask(mask, {
+				reverse: true
+			});
+		}
+
 		return {
 			restrict: 'A',
-			require: '?ngModel',
-			link: function (scope, element, attrs, ctrl) {
-				var decimalDelimiter = $locale.NUMBER_FORMATS.DECIMAL_SEP,
-					thousandsDelimiter = $locale.NUMBER_FORMATS.GROUP_SEP,
-					decimals = $parse(attrs.uiNumberMask)(scope);
-
-				if (!ctrl) {
-					return;
-				}
-
-				if (angular.isDefined(attrs.uiHideGroupSep)){
-					thousandsDelimiter = '';
-				}
+			require: 'ngModel',
+			link: function(scope, element, attrs, ctrl) {
+				var decimals = $parse(attrs.uiScientificNotationMask)(scope);
 
 				if(isNaN(decimals)) {
-					decimals = 2;
+					decimals = defaultPrecision;
 				}
-				var viewMask = NumberMasks.viewMask(decimals, decimalDelimiter, thousandsDelimiter),
-					modelMask = NumberMasks.modelMask(decimals);
 
-				function parse(value) {
-					if(!value) {
+				var significandMask = significandMaskBuilder(decimals);
+
+				function splitNumber (value) {
+					var stringValue = value.toString(),
+						splittedNumber = stringValue.match(/(-?[0-9]*)[\.]?([0-9]*)?[Ee]?([\+-]?[0-9]*)?/);
+
+					return {
+						integerPartOfSignificand: splittedNumber[1],
+						decimalPartOfSignificand: splittedNumber[2],
+						exponent: splittedNumber[3] | 0
+					};
+				}
+
+				function formatter (value) {
+					$log.debug('[uiScientificNotationMask] Formatter called: ', value);
+
+					if (angular.isUndefined(value)) {
 						return value;
 					}
 
-					var valueToFormat = PreFormatters.clearDelimitersAndLeadingZeros(value) || '0';
-					var formatedValue = viewMask.apply(valueToFormat);
-					var actualNumber = parseFloat(modelMask.apply(valueToFormat));
-
-					if(angular.isDefined(attrs.uiNegativeNumber)){
-						var isNegative = (value[0] === '-'),
-							needsToInvertSign = (value.slice(-1) === '-');
-
-						//only apply the minus sign if it is negative or(exclusive)
-						//needs to be negative and the number is different from zero
-						if(needsToInvertSign ^ isNegative && !!actualNumber) {
-							actualNumber *= -1;
-							formatedValue = '-' + formatedValue;
+					if (typeof value === 'string') {
+						if (value.length === 0) {
+							return value;
 						}
+
+						value = value.replace(decimalDelimiter, '.');
+					} else if (typeof value === 'number') {
+						value = value.toExponential(decimals);
 					}
 
-					if (ctrl.$viewValue !== formatedValue) {
-						ctrl.$setViewValue(formatedValue);
+					var formattedValue, exponent;
+					var splittedNumber = splitNumber(value);
+
+					var integerPartOfSignificand = splittedNumber.integerPartOfSignificand | 0;
+					var numberToFormat = integerPartOfSignificand.toString();
+					if (angular.isDefined(splittedNumber.decimalPartOfSignificand)) {
+						numberToFormat += splittedNumber.decimalPartOfSignificand;
+					}
+
+					var needsNormalization =
+						(integerPartOfSignificand >= 1 || integerPartOfSignificand <= -1) &&
+						(
+							(angular.isDefined(splittedNumber.decimalPartOfSignificand) &&
+							splittedNumber.decimalPartOfSignificand.length > decimals) ||
+							(decimals === 0 && numberToFormat.length >= 2)
+						);
+
+					if (needsNormalization) {
+						exponent = numberToFormat.slice(decimals + 1, numberToFormat.length);
+						numberToFormat = numberToFormat.slice(0, decimals + 1);
+					}
+
+					formattedValue = significandMask.apply(numberToFormat);
+
+					if (splittedNumber.exponent !== 0) {
+						exponent = splittedNumber.exponent;
+					}
+
+					if (angular.isDefined(exponent)) {
+						formattedValue += 'e' + exponent;
+					}
+
+					return formattedValue;
+				}
+
+				function parser (value) {
+					$log.debug('[uiScientificNotationMask] Parser called: ', value);
+
+					if(angular.isUndefined(value) || value.toString().length === 0) {
+						return value;
+					}
+
+					var viewValue = formatter(value),
+						modelValue = parseFloat(viewValue.replace(decimalDelimiter, '.'));
+
+					if (ctrl.$viewValue !== viewValue) {
+						ctrl.$setViewValue(viewValue);
 						ctrl.$render();
 					}
 
-					return actualNumber;
+					return modelValue;
 				}
 
-				ctrl.$formatters.push(function(value) {
-					var prefix = '';
-					if(angular.isDefined(attrs.uiNegativeNumber) && value < 0){
-						prefix = '-';
-					}
+				function validator (value) {
+					$log.debug('[uiScientificNotationMask] Validator called: ', value);
 
-					if(!value) {
+					if(angular.isUndefined(value)) {
 						return value;
 					}
 
-					var valueToFormat = PreFormatters.prepareNumberToFormatter(value, decimals);
-					return prefix + viewMask.apply(valueToFormat);
-				});
-
-				ctrl.$parsers.push(parse);
-
-				if (attrs.uiNumberMask) {
-					scope.$watch(attrs.uiNumberMask, function(decimals) {
-						if(isNaN(decimals)) {
-							decimals = 2;
-						}
-						viewMask = NumberMasks.viewMask(decimals, decimalDelimiter, thousandsDelimiter);
-						modelMask = NumberMasks.modelMask(decimals);
-
-						parse(ctrl.$viewValue || '');
-					});
+					var isMaxValid = value < Number.MAX_VALUE;
+					ctrl.$setValidity('max', ctrl.$isEmpty(value) || isMaxValid);
+					return value;
 				}
 
-				if(attrs.min){
-					ctrl.$parsers.push(function(value) {
-						var min = $parse(attrs.min)(scope);
-						return NumberValidators.minNumber(ctrl, value, min);
-					});
-
-					scope.$watch(attrs.min, function(value) {
-						NumberValidators.minNumber(ctrl, ctrl.$modelValue, value);
-					});
-				}
-
-				if(attrs.max) {
-					ctrl.$parsers.push(function(value) {
-						var max = $parse(attrs.max)(scope);
-						return NumberValidators.maxNumber(ctrl, value, max);
-					});
-
-					scope.$watch(attrs.max, function(value) {
-						NumberValidators.maxNumber(ctrl, ctrl.$modelValue, value);
-					});
-				}
+				ctrl.$formatters.push(formatter);
+				ctrl.$formatters.push(validator);
+				ctrl.$parsers.push(parser);
+				ctrl.$parsers.push(validator);
 			}
 		};
 	}
 ]);
 
+angular.module('ui.utils.masks.us', [
+	'ui.utils.masks.global',
+	'ui.utils.masks.us.phone'
+]);
+
 angular.module('ui.utils.masks.us.phone', [])
-.factory('PhoneValidators', [function() {
+.factory('usPhoneValidators', [function() {
 	return {
 		usPhoneNumber: function (ctrl, value) {
-			var valid = ctrl.$isEmpty(value) || value.length > 9;
+			var valid = ctrl.$isEmpty(value) || (value.length > 9);
 			ctrl.$setValidity('us-phone-number', valid);
 			return value;
 		}
 	};
 }])
-.directive('uiUsPhoneNumber', ['PhoneValidators', function(PhoneValidators) {
+.directive('uiUsPhoneNumber', ['usPhoneValidators', function(usPhoneValidators) {
 	var phoneMaskUS = new StringMask('(000) 000-0000'),
-		phoneMaskINTL = new StringMask('+00-00-000-00000');
+		phoneMaskINTL = new StringMask('+00-00-000-000000');
 
 	function clearValue (value) {
 		if(!value) {
@@ -613,7 +744,7 @@ angular.module('ui.utils.masks.us.phone', [])
 			}
 
 			ctrl.$formatters.push(function(value) {
-				return applyPhoneMask(PhoneValidators.usPhoneNumber(ctrl, value));
+				return applyPhoneMask(usPhoneValidators.usPhoneNumber(ctrl, value));
 			});
 
 			ctrl.$parsers.push(function(value) {
@@ -633,7 +764,7 @@ angular.module('ui.utils.masks.us.phone', [])
 			});
 
 			ctrl.$parsers.push(function(value) {
-				return PhoneValidators.usPhoneNumber(ctrl, value);
+				return usPhoneValidators.usPhoneNumber(ctrl, value);
 			});
 		}
 	};
