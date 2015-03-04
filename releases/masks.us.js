@@ -13,7 +13,7 @@ var StringMask = (function() {
 		'9': {pattern: /\d/, optional: true},
 		'#': {pattern: /\d/, optional: true, recursive: true},
 		'S': {pattern: /[a-zA-Z]/},
-		'$': {escape: true} 
+		'$': {escape: true}
 	};
 	var isEscaped = function(pattern, pos) {
 		var count = 0;
@@ -24,7 +24,7 @@ var StringMask = (function() {
 			count += token && token.escape ? 1 : 0;
 			i--;
 		}
-		return count > 0 && count%2 === 1;	
+		return count > 0 && count%2 === 1;
 	};
 	var calcOptionalNumbersToUse = function(pattern, value) {
 		var numbersInP = pattern.replace(/[^0]/g,'').length;
@@ -703,15 +703,19 @@ angular.module('ui.utils.masks.us.phone', [])
 .factory('usPhoneValidators', [function() {
 	return {
 		usPhoneNumber: function (ctrl, value) {
-			var valid = ctrl.$isEmpty(value) || (value.length > 9);
-			ctrl.$setValidity('us-phone-number', valid);
+			var valid = ctrl.$valid;
+			if (!valid || ctrl.isValidating) {
+				valid = ctrl.$isEmpty(value) || (value.length > 9);
+				ctrl.$setValidity('us-phone-number', valid);
+			}
 			return value;
 		}
 	};
 }])
 .directive('uiUsPhoneNumber', ['usPhoneValidators', function(usPhoneValidators) {
 	var phoneMaskUS = new StringMask('(000) 000-0000'),
-		phoneMaskINTL = new StringMask('+00-00-000-000000');
+		phoneMaskEXT = new StringMask('0 (000) 000-0000 ext. 00000'),
+		phoneMaskINTL = new StringMask('+00-000-000-0000000');
 
 	function clearValue (value) {
 		if(!value) {
@@ -726,13 +730,15 @@ angular.module('ui.utils.masks.us.phone', [])
 		}
 
 		var formatedValue;
-		if(value.length < 11){
+		if (value[0] === '1') {
+			formatedValue = phoneMaskEXT.apply(value);
+		} else if (value.length < 11) {
 			formatedValue = phoneMaskUS.apply(value);
-		}else{
+		} else {
 			formatedValue = phoneMaskINTL.apply(value);
 		}
 
-		return formatedValue.trim().replace(/[^0-9]$/, '');
+		return formatedValue.trim().replace(/[^0-9]+$/, '');
 	}
 
 	return {
