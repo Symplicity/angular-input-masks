@@ -705,7 +705,7 @@ angular.module('ui.utils.masks.us.phone', [])
 		usPhoneNumber: function (ctrl, value) {
 			var valid = ctrl.$valid;
 			if (!valid || ctrl.isValidating) {
-				valid = ctrl.$isEmpty(value) || (value.length > 9);
+				valid = ctrl.$isEmpty(value) || ((value.length > 10) || (value[0] !== '1' && value.length === 10));
 				ctrl.$setValidity('us-phone-number', valid);
 			}
 			return value;
