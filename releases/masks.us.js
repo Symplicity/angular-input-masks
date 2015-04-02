@@ -701,6 +701,10 @@ angular.module('ui.utils.masks.us', [
 
 angular.module('ui.utils.masks.us.phone', [])
 .factory('usPhoneValidators', [function() {
+	var phoneMaskUS = new StringMask('(000) 000-0000'),
+		phoneMaskEXT = new StringMask('0 (000) 000-0000 ext. 00000'),
+		phoneMaskINTL = new StringMask('+00-000-000-0000000');
+
 	return {
 		usPhoneNumber: function (ctrl, value) {
 			var valid = ctrl.$valid;
@@ -709,36 +713,32 @@ angular.module('ui.utils.masks.us.phone', [])
 				ctrl.$setValidity('us-phone-number', valid);
 			}
 			return value;
+		},
+
+		applyPhoneMask: function applyPhoneMask(value) {
+			if (!value) {
+				return value;
+			}
+
+			var formatedValue;
+			if (value[0] === '1') {
+				formatedValue = phoneMaskEXT.apply(value);
+			} else if (value.length < 11) {
+				formatedValue = phoneMaskUS.apply(value);
+			} else {
+				formatedValue = phoneMaskINTL.apply(value);
+			}
+
+			return formatedValue.trim().replace(/[^0-9]+$/, '');
 		}
 	};
 }])
 .directive('uiUsPhoneNumber', ['usPhoneValidators', function(usPhoneValidators) {
-	var phoneMaskUS = new StringMask('(000) 000-0000'),
-		phoneMaskEXT = new StringMask('0 (000) 000-0000 ext. 00000'),
-		phoneMaskINTL = new StringMask('+00-000-000-0000000');
-
 	function clearValue (value) {
 		if(!value) {
 			return value;
 		}
 		return value.replace(/[^0-9]/g, '');
-	}
-
-	function applyPhoneMask (value) {
-		if(!value) {
-			return value;
-		}
-
-		var formatedValue;
-		if (value[0] === '1') {
-			formatedValue = phoneMaskEXT.apply(value);
-		} else if (value.length < 11) {
-			formatedValue = phoneMaskUS.apply(value);
-		} else {
-			formatedValue = phoneMaskINTL.apply(value);
-		}
-
-		return formatedValue.trim().replace(/[^0-9]+$/, '');
 	}
 
 	return {
@@ -750,7 +750,7 @@ angular.module('ui.utils.masks.us.phone', [])
 			}
 
 			ctrl.$formatters.push(function(value) {
-				return applyPhoneMask(usPhoneValidators.usPhoneNumber(ctrl, value));
+				return usPhoneValidators.applyPhoneMask(usPhoneValidators.usPhoneNumber(ctrl, value));
 			});
 
 			ctrl.$parsers.push(function(value) {
@@ -759,7 +759,7 @@ angular.module('ui.utils.masks.us.phone', [])
 				}
 
 				var cleanValue = clearValue(value);
-				var formatedValue = applyPhoneMask(cleanValue);
+				var formatedValue = usPhoneValidators.applyPhoneMask(cleanValue);
 
 				if (ctrl.$viewValue !== formatedValue) {
 					ctrl.$setViewValue(formatedValue);
@@ -773,6 +773,11 @@ angular.module('ui.utils.masks.us.phone', [])
 				return usPhoneValidators.usPhoneNumber(ctrl, value);
 			});
 		}
+	};
+}])
+.filter('uiUsPhoneNumberFilter', ['usPhoneValidators', function (usPhoneValidators) {
+	return function (input) {
+		return usPhoneValidators.applyPhoneMask(input);
 	};
 }]);
 
