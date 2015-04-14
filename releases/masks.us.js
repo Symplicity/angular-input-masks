@@ -777,7 +777,7 @@ angular.module('ui.utils.masks.us.phone', [])
 }])
 .filter('uiUsPhoneNumberFilter', ['usPhoneValidators', function (usPhoneValidators) {
 	return function (input) {
-		return usPhoneValidators.applyPhoneMask(input);
+		return usPhoneValidators.applyPhoneMask('' + input);
 	};
 }]);
 
